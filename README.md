@@ -1,4 +1,4 @@
-# PdfCraft Android
+# PdfCraft for Android
 
 An independent Android port of [PdfCraft](https://github.com/storytold/pdfcraft),
 with a native Kotlin / Jetpack Compose interface and the Rust PDF engine connected

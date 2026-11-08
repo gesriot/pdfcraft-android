@@ -17,12 +17,17 @@ export ANDROID_AAPT2="$HOME/android-arm-tools/aapt2"
 export TMPDIR="$PDFCRAFT_BUILD_ROOT/tmp"
 mkdir -p "$PDFCRAFT_BUILD_ROOT/downloads" "$TMPDIR"
 df -hT "$PDFCRAFT_BUILD_ROOT" /tmp
+awk '$2 == "/tmp" { print }' /proc/mounts
 ```
 
 Check that the chosen directory is on disk and has room for the SDK, NDK, Cargo
 sources, host and Android compilation outputs. `/tmp` can be a small tmpfs in
 proot: it can fill even when the tablet has free storage. Do not put a fresh build
-there. The shell wrappers set `TMPDIR` to `$PDFCRAFT_BUILD_ROOT/tmp`, including for
+there. In proot, `df` can show a much larger capacity than the tmpfs mount limit.
+Check the filesystem type and the mount options in `/proc/mounts` (`size=`, when
+present); do not rely on the `df` Size column to judge tmpfs capacity.
+
+The shell wrappers set `TMPDIR` to `$PDFCRAFT_BUILD_ROOT/tmp`, including for
 direct Cargo calls and Android-native tests. This directs Rust temporary files
 onto the chosen filesystem; it does not configure Java's `java.io.tmpdir` property.
 
@@ -86,8 +91,19 @@ Review the SDK terms there and the licences presented by `sdkmanager`.
   test ! -e "$ANDROID_HOME/cmdline-tools/latest"
   mv sdk-tools-unpack/cmdline-tools "$ANDROID_HOME/cmdline-tools/latest"
 )
+```
 
+Run the licence command separately and answer its interactive prompts:
+
+```sh
 "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --licenses
+```
+
+Wait until it finishes and the shell prompt returns before pasting the installation
+command below. Otherwise, that command can be consumed as answers to the licence
+prompts.
+
+```sh
 "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" \
   "platforms;android-36" "build-tools;35.0.0" "build-tools;36.0.0"
 ```

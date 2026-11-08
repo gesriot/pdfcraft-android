@@ -37,9 +37,12 @@ fill in the values locally, and restrict access to the directory and files. Use 
 absolute `storeFile` path. Required properties are `storeFile`, `storePassword`,
 `keyAlias` and `keyPassword`. Never commit the populated file or keystore.
 
+Use the same persistent build directory selected during environment setup:
+
 ```sh
+export PDFCRAFT_BUILD_ROOT="$HOME/.local/share/pdfcraft-build"
 export PDFCRAFT_SIGNING_PROPERTIES=/absolute/private/path/signing.properties
-sh android/build-local.sh
+PDFCRAFT_BUILD_TYPE=release sh android/build-local.sh
 ```
 
 Without an override, Gradle looks in the Java user's home directory at
