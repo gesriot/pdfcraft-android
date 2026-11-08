@@ -1,0 +1,6 @@
+# Copy outside the checkout, restrict access, and set PDFCRAFT_SIGNING_PROPERTIES.
+# Use an absolute path to your existing release keystore. Never commit real values.
+storeFile=/absolute/path/to/android-release.jks
+storePassword=REPLACE_LOCALLY
+keyAlias=pdfcraft
+keyPassword=REPLACE_LOCALLY

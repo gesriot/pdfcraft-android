@@ -53,6 +53,7 @@ pub use types::{
 
 pub mod appearance;
 pub mod links;
+pub mod text_box;
 
 #[cfg(test)]
 mod tests;

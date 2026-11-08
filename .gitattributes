@@ -6,6 +6,9 @@
 # The craft-i18n pin: CI and the build read it as one SHA, so it stays LF everywhere (readers trim it too).
 craft-i18n.rev text eol=lf
 
+# Gradle's Windows launcher uses CRLF; preserve its bytes and treat CR as a line ending.
+android/gradlew.bat whitespace=cr-at-eol
+
 # Not text at all: no textual diffs or merges either.
 *.pdf binary
 *.p12 binary

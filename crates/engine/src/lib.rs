@@ -36,7 +36,6 @@ pub mod js;
 mod layers;
 pub mod links;
 pub mod model3d;
-mod object_clip;
 pub mod ocr;
 mod open;
 pub mod optimizer;
@@ -61,6 +60,7 @@ mod text_preview;
 pub mod text_script;
 pub mod text_style_bookmarks;
 pub mod word_count;
+pub mod word_export;
 pub mod xfa;
 mod xfa_form;
 
@@ -74,7 +74,7 @@ pub use rich_copy::RichCopy;
 pub use signature_image::{ImageSignaturePreview, SignatureImage};
 pub use signature_scan::{PhotoRect, ScanError, SignaturePhoto, Turn};
 pub use stamp_preview::{CommentLayer, StampPreview};
-pub use text_preview::{TextEditPreview, UnmarkedPages};
+pub use text_preview::{PreparedTextEdit, TextEditPreview, UnmarkedPages};
 
 pub use pdfcraft_organize::{
     BoxSpec, FieldConflicts, MAX_IMPORT_BOOKMARKS, OutlineNode, OutlineTree, PageBox, SplitBy, Transition, TransitionSpec, mime_for_name,
@@ -109,7 +109,6 @@ pub use pdfcraft_edit::{Backdrop, BlockKey, BlockStyle, PageImage, RangeStyle, T
 pub use pdfcraft_measure as measure;
 pub use pdfcraft_xfa::Report as XfaLayout;
 
-pub use object_clip::{ObjectClip, ObjectClipboard};
 pub use pdfcraft_edit::{EditableObject, MAX_MOVE_OBJECTS, ObjectKind, ObjectTarget};
 
 pub use pdfcraft_fonts::{MAX_SIGNATURE_CHARS, ScriptOutline, script_missing, script_outline, undrawable_message};
@@ -131,7 +130,6 @@ pub use pdfcraft_redact::patterns::{
     MAX_WORDS as REDACT_MAX_WORDS, PATTERNS as REDACT_PATTERNS, Pattern as RedactPattern, find as find_pattern, word_list as redact_word_list,
 };
 pub use pdfcraft_redact::sanitize::{HIDDEN, Hidden};
-pub use pdfcraft_redact::user_regex::{UserRegex as RedactRegex, VALIDATORS as REDACT_VALIDATORS, Validator as RedactValidator};
 pub use pdfcraft_sign as sign;
 pub use pdfcraft_sign::{SignOptions, SignatureInfo, Status as SignatureStatus, StatusCaptions, TrustStore};
 pub use pdfcraft_xfdf::Format as DataFormat;

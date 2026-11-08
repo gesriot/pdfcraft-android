@@ -501,7 +501,24 @@ impl Automation {
             _ => None,
         };
         let before: Vec<Option<String>> = self.doc(a)?.info.annotations.iter().map(|c| c.name.clone()).collect();
-        let mut out = self.apply(a, Edit::AddAnnotation(NewAnnotation { page, shape, style, contents, author }))?;
+        let annotation = NewAnnotation { page, shape, style, contents, author };
+        let edit = if let Some(font_path) = a.opt_str("font_path")? {
+            if !matches!(annotation.shape, Shape::TextBox { .. }) {
+                return Err(ToolError::InvalidArgs("font_path is supported only for textbox".into()));
+            }
+            let path = self.resolve(font_path, false)?;
+            let file = std::fs::File::open(path).map_err(failed)?;
+            use std::io::Read;
+            let mut bytes = Vec::new();
+            file.take((16 << 20) + 1).read_to_end(&mut bytes).map_err(failed)?;
+            if bytes.len() > 16 << 20 {
+                return Err(ToolError::InvalidArgs("font exceeds 16 MiB".into()));
+            }
+            Edit::AddTextAnnotation { annotation, font: std::sync::Arc::new(bytes) }
+        } else {
+            Edit::AddAnnotation(annotation)
+        };
+        let mut out = self.apply(a, edit)?;
         let added = self.doc(a)?.info.annotations.iter().find(|c| c.page == page && c.subtype != "Popup" && !before.contains(&c.name));
         out["comment"] = json!({ "id": added.and_then(|c| c.name.clone()), "page": page + 1, "index": added.map(|c| c.index + 1) });
         if let Some(n) = marked {

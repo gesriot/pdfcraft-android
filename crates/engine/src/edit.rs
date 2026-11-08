@@ -156,6 +156,11 @@ pub enum Edit {
     },
     /// Add a comment (sticky note, highlight, shape, drawing, text box…).
     AddAnnotation(NewAnnotation),
+    /// FreeText with an explicit open-licensed font. Rejects overflow instead of clipping.
+    AddTextAnnotation {
+        annotation: NewAnnotation,
+        font: Arc<Vec<u8>>,
+    },
     /// A custom stamp from a picture file (a PDF page or an image) on `page`. A zero-size
     /// `rect` is a point: the stamp is centred there at its natural size (at most 200 pt).
     /// Any other `rect` is a box: the picture is scaled to fit inside it, keeping its shape,
@@ -457,12 +462,6 @@ pub enum Edit {
         objects: Vec<ObjectTarget>,
         offset: [f64; 2],
     },
-    /// Delete mixed existing and added objects together (references from one inventory of
-    /// `page`), as one step: what Delete and Cut do to objects selected together.
-    DeleteObjects {
-        page: usize,
-        objects: Vec<ObjectTarget>,
-    },
     /// Edit text in a paragraph box: replace paragraph `block` (from `Document::text_blocks`),
     /// rewrapped to the box's width.
     EditTextBlock {
@@ -471,10 +470,6 @@ pub enum Edit {
         text: String,
         /// Formatting changes (font, size, colour, alignment); default keeps the paragraph's.
         style: pdfcraft_edit::BlockStyle,
-    },
-    /// Expose supported grouped source text on one page for direct editing.
-    PrepareText {
-        page: usize,
     },
     /// An explicit open-licensed full font program, completing subsets or selected by a user.
     RegisterTextFont {
@@ -554,13 +549,6 @@ pub enum Edit {
         page: usize,
         content: AddedContent,
         file: Option<(String, Arc<Vec<u8>>)>,
-    },
-    /// Edit ▸ Paste of objects copied together in Edit a PDF ([`Document::copy_objects`](crate::Document::copy_objects)), in this
-    /// document or another: drawn on top of `page` as they were, moved by `offset` (user space).
-    PasteObjects {
-        page: usize,
-        clip: Arc<crate::ObjectClip>,
-        offset: [f64; 2],
     },
     /// Apply redaction marks (all, or those on `pages`): remove what they cover for good.
     ApplyRedactions {

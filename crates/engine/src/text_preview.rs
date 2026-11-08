@@ -3,9 +3,17 @@
 
 use std::sync::Arc;
 
-use pdfcraft_render::{PageRenderer, RenderConfig, RenderPool, RenderRequest, RenderedPage};
+use pdfcraft_render::{PageRenderer, RenderConfig, RenderPool, RenderRequest, RenderedPage, Tile};
 
-use crate::{Document, guard};
+use crate::{BlockStyle, Document, Edit, guard};
+
+/// A read-only replacement draft and the single undoable edit producing exactly that draft.
+pub struct PreparedTextEdit {
+    pub edit: Edit,
+    pub preview: TextEditPreview,
+    pub layout: pdfcraft_edit::text::TextEditLayout,
+    pub substituted: Option<String>,
+}
 
 pub struct TextEditPreview {
     page: usize,
@@ -14,6 +22,21 @@ pub struct TextEditPreview {
 }
 
 impl TextEditPreview {
+    /// Bounded preview region. The caller supplies device-pixel bounds at `scale`.
+    pub fn render_region(&self, scale: f32, tile: Tile) -> Result<RenderedPage, String> {
+        if !scale.is_finite() || scale <= 0.0 || tile.w == 0 || tile.h == 0 || tile.w > 2048 || tile.h > 2048 {
+            return Err("invalid text preview dimensions".into());
+        }
+        guard(|| {
+            let mut renderer = PageRenderer::new(self.bytes.clone(), self.config.clone());
+            let out = renderer.render(RenderRequest { page: self.page, scale, tile: Some(tile), ..Default::default() });
+            if let Some(e) = &out.error {
+                return Err(e.clone());
+            }
+            Ok(out)
+        })?
+    }
+
     pub fn renderer(&self) -> RenderPool {
         RenderPool::new(self.bytes.clone(), 1, self.config.clone())
     }
@@ -91,6 +114,56 @@ fn render_one(bytes: &Arc<Vec<u8>>, config: &RenderConfig, page: usize, scale: f
 }
 
 impl Document {
+    /// A portable FreeText appearance on a copy; Apply uses the exact same font and annotation.
+    pub fn prepare_text_annotation(&self, annotation: crate::NewAnnotation, font: Arc<Vec<u8>>) -> Result<(Edit, TextEditPreview), String> {
+        guard(|| {
+            if !self.allows_annotation() {
+                return Err("Adding text is not permitted".into());
+            }
+            let editor = self.editor.as_ref().ok_or("the document can't be read")?;
+            let mut cos = editor.cos.clone();
+            pdfcraft_annot::text_box::add(&mut cos, &annotation, &font, &pdfcraft_annot::Meta::default()).map_err(|e| e.to_string())?;
+            let bytes = Arc::new(pdfcraft_cos::write_incremental(&cos, &pdfcraft_cos::SaveOptions::default()).map_err(|e| e.to_string())?);
+            let preview = TextEditPreview { page: annotation.page, bytes, config: self.config.clone() };
+            Ok((Edit::AddTextAnnotation { annotation, font }, preview))
+        })?
+    }
+
+    /// Prepare a real PDF replacement without changing history. An optional licensed font
+    /// and the replacement are one Batch, so a failed replacement cannot leave a font edit.
+    /// Frontends must check the document's edit_generation before applying the returned edit.
+    pub fn prepare_text_edit(
+        &self,
+        page: usize,
+        block: usize,
+        text: &str,
+        mut style: BlockStyle,
+        font: Option<Arc<Vec<u8>>>,
+    ) -> Result<PreparedTextEdit, String> {
+        guard(|| {
+            if !self.allows_modification() {
+                return Err("Редактирование этого документа запрещено".into());
+            }
+            let editor = self.editor.as_ref().ok_or("the document can't be read")?;
+            let mut cos = editor.cos.clone();
+            let mut edits = Vec::new();
+            if let Some(bytes) = font {
+                style.resource = Some(pdfcraft_edit::text::register_text_font(&mut cos, page, &bytes).map_err(|e| e.to_string())?);
+                edits.push(Edit::RegisterTextFont { page, bytes });
+            }
+            let layout = pdfcraft_edit::text::text_edit_layout(&cos, page, block, text, &style).map_err(|e| e.to_string())?;
+            let result = pdfcraft_edit::text::rewrite_block(&mut cos, page, block, Some(text), &style).map_err(|e| e.to_string())?;
+            edits.push(Edit::EditTextBlock { page, block, text: text.into(), style });
+            let bytes = Arc::new(pdfcraft_cos::write_incremental(&cos, &pdfcraft_cos::SaveOptions::default()).map_err(|e| e.to_string())?);
+            Ok(PreparedTextEdit {
+                edit: Edit::Batch { label: "Edit text".into(), edits },
+                preview: TextEditPreview { page, bytes, config: self.config.clone() },
+                layout,
+                substituted: result.substituted,
+            })
+        })?
+    }
+
     /// Background for retyping an added text item, without changing its saved content.
     pub fn added_text_preview(&self, page: usize, index: usize) -> Result<TextEditPreview, String> {
         guard(|| {

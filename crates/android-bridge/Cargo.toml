@@ -1,0 +1,31 @@
+[package]
+name = "pdfcraft-android-bridge"
+description = "Bounded Android bindings over the PdfCraft engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+pdfcraft-engine.workspace = true
+pdfcraft-render.workspace = true
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+thiserror.workspace = true
+uniffi = "=0.32.0"
+
+[dev-dependencies]
+skrifa = "0.44"
+tempfile = "3.27"
+
+[features]
+bindgen = ["uniffi/cli"]
+
+[[bin]]
+name = "pdfcraft-bindgen"
+path = "src/bin/bindgen.rs"
+required-features = ["bindgen"]

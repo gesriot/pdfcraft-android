@@ -36,6 +36,14 @@ pub struct Document {
     pub(crate) snapshot_generation: u64,
     /// Why the document cannot be edited (e.g. encryption), if so.
     pub read_only_reason: Option<String>,
+    /// Advisory edit-permission flags (modify, assemble, annotate, form fill). Desktop and
+    /// automation keep this on. The Android port turns it off after a successful open so an
+    /// opened PDF can be edited without those restrictions. Opening still needs the password,
+    /// and a saved copy keeps its encryption.
+    pub(crate) enforce_edit_permissions: bool,
+    /// Advisory permission check for extracting pages and exporting page images. Same split as
+    /// [`Self::enforce_edit_permissions`]: on for desktop, off for the Android port.
+    pub(crate) enforce_page_export_permissions: bool,
     /// Interactive form fields of the current state (empty without a form).
     pub form: Arc<Vec<pdfcraft_forms::Field>>,
     pub(crate) marker_scan: OnceLock<pdfcraft_edit::MarkerScan>,
@@ -260,15 +268,6 @@ impl Document {
         pdfcraft_create::image_file(&editor.cos, img.object.ok_or("the image has no object")?)
     }
 
-    /// Edit text: whether grouped artwork `index` on `page` (0-based, as [`Self::page_images`]
-    /// lists them) shows text that [`Edit::PrepareText`](crate::Edit::PrepareText) would make
-    /// editable. Reads the page without changing it; `false` for a logo, a group that can't be
-    /// opened or a page that can't be read.
-    pub fn grouped_text_at(&self, page: usize, index: usize) -> bool {
-        let Some(editor) = self.editor.as_ref() else { return false };
-        crate::guard(|| pdfcraft_edit::text::forms::grouped_text_at(&editor.cos, page, index)).is_ok_and(|r| r.is_ok_and(|yes| yes))
-    }
-
     /// Edit a PDF ▸ Edit text: the paragraphs on `page` (0-based).
     pub fn text_blocks(&self, page: usize) -> Vec<pdfcraft_edit::TextBlock> {
         self.editor.as_ref().and_then(|e| e.text_blocks(page).ok()).map(|b| b.as_ref().clone()).unwrap_or_default()
@@ -442,9 +441,15 @@ impl Document {
         if self.allows_copying() { Ok(()) } else { Err(EditError::NotPermitted("copying text and images")) }
     }
 
+    /// Page-image and Word export. Android turns [`Self::enforce_page_export_permissions`] off
+    /// after open; copying text through [`Self::check_copying`] stays gated.
+    pub fn check_page_image_export(&self) -> Result<(), EditError> {
+        if self.enforce_page_export_permissions { self.check_copying() } else { Ok(()) }
+    }
+
     /// Page changes (insert, delete, rotate, move, extract) are allowed.
     pub fn allows_assembly(&self) -> bool {
-        self.editable() && self.permissions().is_none_or(|p| p.assemble())
+        self.editable() && (!self.enforce_edit_permissions || self.permissions().is_none_or(|p| p.assemble()))
     }
 
     /// Redaction marks waiting to be applied.
@@ -502,7 +507,7 @@ impl Document {
 
     /// Changes to content and document information are allowed.
     pub fn allows_modification(&self) -> bool {
-        self.editable() && self.permissions().is_none_or(|p| p.modify())
+        self.editable() && (!self.enforce_edit_permissions || self.permissions().is_none_or(|p| p.modify()))
     }
 
     /// How widget `widget` of text field `name` lays its value out, for asking whether a typed
@@ -518,12 +523,12 @@ impl Document {
 
     /// Filling in form fields is allowed (Table 22, bits 6 and 9).
     pub fn allows_form_filling(&self) -> bool {
-        self.editable() && self.permissions().is_none_or(|p| p.fill_forms())
+        self.editable() && (!self.enforce_edit_permissions || self.permissions().is_none_or(|p| p.fill_forms()))
     }
 
     /// Adding and changing comments is allowed (Table 22, bit 6).
     pub fn allows_annotation(&self) -> bool {
-        self.editable() && self.permissions().is_none_or(|p| p.annotate())
+        self.editable() && (!self.enforce_edit_permissions || self.permissions().is_none_or(|p| p.annotate()))
     }
 
     /// The document's security may be changed (Protect, Remove security): it is editable and,

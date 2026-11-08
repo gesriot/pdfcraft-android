@@ -13,6 +13,30 @@ impl Automation {
             (_, "rich") => format,
             (_, _) => return Err(ToolError::InvalidArgs("html_mode is only available for HTML exports (rich or simple)".into())),
         };
+        let reflow = match a.opt_str("layout")?.unwrap_or("auto") {
+            "auto" => false,
+            "reflow" => true,
+            _ => return Err(ToolError::InvalidArgs("layout must be auto or reflow".into())),
+        };
+        if (reflow || a.opt_ints("pages")?.is_some()) && !matches!(format, pdfcraft_engine::compare::OfficeFormat::Docx) {
+            return Err(ToolError::InvalidArgs("layout/pages are only supported for DOCX".into()));
+        }
+        if a.opt_ints("pages")?.is_some() && !reflow {
+            return Err(ToolError::InvalidArgs("selected pages require layout: reflow".into()));
+        }
+        if reflow {
+            let doc = self.doc_to_copy(a)?;
+            let pages = if a.opt_ints("pages")?.is_some() { self.pages(a, "pages")? } else { (0..doc.info.pages.len()).collect() };
+            let mut job = doc.prepare_word_export(&pages).map_err(failed)?;
+            while job.completed() < job.total() {
+                job.advance().map_err(failed)?;
+            }
+            let bytes = job.finish().map_err(failed)?;
+            let image_pages: Vec<usize> = job.image_pages.iter().map(|p| p + 1).collect();
+            write_atomic(&path, &bytes)?;
+            return Ok(json!({ "path": path.to_string_lossy(), "bytes": bytes.len(), "format": format.extension(),
+                "image_pages": image_pages, "truncated": false, "truncated_pages": [] }));
+        }
         let export = self.doc_to_copy(a)?.export_office_checked(format);
         write_atomic(&path, &export.bytes)?;
         // Text left out to keep a hostile page bounded is said, not silent (#3120).

@@ -323,29 +323,7 @@ impl Document {
     /// ([`pdfcraft_filters::MAX_CHAIN`]). Only small values are copied, so a file can't have a
     /// large object copied once for each key and filter.
     pub fn with_direct_parms<'s>(&self, s: &'s Stream) -> Cow<'s, Stream> {
-        let Some(made) = self.direct_parms(s) else { return Cow::Borrowed(s) };
-        let mut s = s.clone();
-        s.dict.set(b"DecodeParms".to_vec(), made);
-        Cow::Owned(s)
-    }
-
-    /// [`Document::with_direct_parms`] for decoding alone: where that copies `s`, this makes a
-    /// stream of `s`'s data, shared, and a dictionary of its `/Filter` and the parameters made
-    /// direct, all its filters read. A stream named again and again, as a page's `/Contents` may
-    /// list one, isn't copied whole each time.
-    pub(crate) fn decoding_view<'s>(&self, s: &'s Stream) -> Cow<'s, Stream> {
-        let Some(made) = self.direct_parms(s) else { return Cow::Borrowed(s) };
-        let mut dict = Dict::new();
-        if let Some(f) = s.dict.get(b"Filter") {
-            dict.set(b"Filter".to_vec(), f.clone());
-        }
-        dict.set(b"DecodeParms".to_vec(), made);
-        Cow::Owned(Stream { dict, raw: s.raw.clone() })
-    }
-
-    /// The `/DecodeParms` [`Document::with_direct_parms`] gives `s`, or `None` when it keeps `s`.
-    fn direct_parms(&self, s: &Stream) -> Option<Object> {
-        let p = s.dict.get(b"DecodeParms")?;
+        let Some(p) = s.dict.get(b"DecodeParms") else { return Cow::Borrowed(s) };
         let crypt = |f: &Object| matches!(f.as_name(), Some(b"Crypt"));
         let filters: Vec<bool> = match s.dict.get(b"Filter") {
             Some(Object::Array(a)) => a.iter().map(crypt).collect(),
@@ -353,7 +331,7 @@ impl Document {
             None => Vec::new(),
         };
         if filters.iter().filter(|c| !**c).count() > pdfcraft_filters::MAX_CHAIN {
-            return None;
+            return Cow::Borrowed(s);
         }
         let mut changed = matches!(p, Object::Ref(_));
         // Its numbers and flags kept, resolved; anything else is no filter's parameters (null).
@@ -380,7 +358,12 @@ impl Document {
             }
             _ => one(p, &mut changed),
         };
-        changed.then_some(made)
+        if !changed {
+            return Cow::Borrowed(s);
+        }
+        let mut s = s.clone();
+        s.dict.set(b"DecodeParms".to_vec(), made);
+        Cow::Owned(s)
     }
 
     /// `o`, or the object it refers to, without copying either.

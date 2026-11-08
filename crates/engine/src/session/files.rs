@@ -349,8 +349,9 @@ impl Session {
 
     /// New PDF bytes containing copies of `pages` of the document (Extract Pages).
     pub fn extract(&self, id: DocId, pages: &[usize]) -> Result<Arc<Vec<u8>>, EditError> {
+        let enforce = self.get(id).ok_or(EditError::NoDocument)?.enforce_page_export_permissions;
         let src = self.cos(id)?;
-        if src.permissions().is_some_and(|p| !p.assemble()) {
+        if enforce && src.permissions().is_some_and(|p| !p.assemble()) {
             return Err(EditError::NotPermitted("extracting pages"));
         }
         let out = pdfcraft_organize::extract_pages(src, pages)?;
