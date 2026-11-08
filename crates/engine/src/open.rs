@@ -352,6 +352,8 @@ impl Session {
             generation: 0,
             snapshot_generation: 0,
             read_only_reason,
+            enforce_edit_permissions: true,
+            enforce_page_export_permissions: true,
             form: Arc::new(form),
             marker_scan: OnceLock::new(),
             links: OnceLock::new(),

@@ -1,0 +1,4 @@
+[bindings.kotlin]
+package_name = "org.pdfcraft.android.engine"
+cdylib_name = "pdfcraft_android_bridge"
+android = true

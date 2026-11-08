@@ -16,7 +16,7 @@ sha256 = "cd7032ea33b71427f188e34ffb4aee9d6868a57fd196037c5c8b2be03a2a0352"
 [[document]]
 source = "NOTICE"
 destination = "NOTICE"
-sha256 = "d9ba162ad2bc95d22ab9885065e253bb823bd6795068828e7b39858344b660eb"
+sha256 = "a3cf21722000702dcfd858c934325c98401be92687047503251b3fec5bdcd575"
 
 [[document]]
 source = "assets/app-icon/LICENSE-document.txt"
@@ -59,13 +59,6 @@ licences = ["BSD-3-Clause"]
 destination = "licenses/CMap-LICENSE.txt"
 sha256 = "742665db9c8e1bc72603c6d319ca3e90b83bd6d95202f0cd4ef11068a07a9c29"
 origin = "https://static.crates.io/crates/hayro-cmap/hayro-cmap-0.1.0.crate#assets/LICENSE.txt"
-
-[[document]]
-source = "licenses/ICU4X-LICENSE.txt"
-licences = ["Unicode-3.0"]
-destination = "licenses/ICU4X-LICENSE.txt"
-sha256 = "f367c1b8e1aa262435251e442901da4607b4650e0e63a026f5044473ecfb90f2"
-origin = "https://static.crates.io/crates/icu_segmenter_data/icu_segmenter_data-2.3.0.crate#LICENSE"
 
 [[document]]
 source = "licenses/egui-Hack-Regular.txt"
@@ -172,8 +165,22 @@ path = "src/font/generated/metrics.rs"
 licence = "MIT OR Apache-2.0"
 documents = ["vendor/hayro-interpret/LICENSE-MIT", "vendor/hayro-interpret/LICENSE-APACHE"]
 
-[[bundled]]
-crate = "icu_segmenter_data"
-path = "data/segmenter_dictionary_extended_v1.rs.data"
-licence = "Unicode-3.0"
-documents = ["licenses/ICU4X-LICENSE.txt"]
+[[document]]
+source = "licenses/gradle-wrapper-LICENSE.txt"
+destination = "licenses/gradle-wrapper-LICENSE.txt"
+sha256 = "9536d88ea948603d18e232a13f5958d67807cd80828036b082bff171d2cf0703"
+origin = "https://raw.githubusercontent.com/gradle/gradle/v8.14.3/LICENSE"
+licences = ["Apache-2.0"]
+
+[[document]]
+source = "licenses/jna-LICENSE.txt"
+destination = "licenses/jna-LICENSE.txt"
+sha256 = "07c938b23950ab7d47a24ef35f9f5da3a05ae164278dc959ad6994135ed59ff1"
+origin = "https://raw.githubusercontent.com/java-native-access/jna/5.17.0/LICENSE"
+
+[[document]]
+source = "licenses/jna-APACHE-2.0.txt"
+destination = "licenses/jna-APACHE-2.0.txt"
+sha256 = "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+origin = "https://raw.githubusercontent.com/java-native-access/jna/5.17.0/AL2.0"
+licences = ["Apache-2.0"]

@@ -18,21 +18,23 @@ fn deletes_pages(edit: &Edit) -> bool {
 }
 
 impl Session {
+    /// Whether this frontend enforces advisory edit permissions on an already decrypted
+    /// document. Does not change encryption, the opening password, bytes or history.
+    /// Desktop and automation leave this on. The Android port turns it off after open.
+    pub fn set_edit_permission_enforcement(&mut self, id: DocId, enforce: bool) -> Result<(), EditError> {
+        self.doc_mut(id)?.enforce_edit_permissions = enforce;
+        Ok(())
+    }
+
+    /// Advisory permissions for extracting pages and exporting page images. Opening passwords
+    /// and source encryption are unchanged. Defaults to enforcement.
+    pub fn set_page_export_permission_enforcement(&mut self, id: DocId, enforce: bool) -> Result<(), EditError> {
+        self.doc_mut(id)?.enforce_page_export_permissions = enforce;
+        Ok(())
+    }
+
     /// Apply an edit. On success the previous state is undoable and the view data is refreshed.
     pub fn apply(&mut self, id: DocId, edit: Edit) -> Result<(), EditError> {
-        self.apply_reporting(id, edit).map(|_| ())
-    }
-
-    /// Edit a PDF ▸ Edit text: make the grouped text on `page` (0-based) editable, as one undoable
-    /// [`Edit::PrepareText`], and say what it prepared, which fonts' maps it repaired and which
-    /// groups it left as they were (and why). The counts are this edit's own, not a preview's.
-    pub fn prepare_text(&mut self, id: DocId, page: usize) -> Result<pdfcraft_edit::text::forms::Preparation, EditError> {
-        self.apply_reporting(id, Edit::PrepareText { page })?
-            .ok_or_else(|| EditError::Invalid("preparing grouped text gave no result; the document was not changed".into()))
-    }
-
-    /// [`Session::apply`], giving back what an [`Edit::PrepareText`] did (`None` for other edits).
-    fn apply_reporting(&mut self, id: DocId, edit: Edit) -> Result<Option<pdfcraft_edit::text::forms::Preparation>, EditError> {
         let now = self.now();
         let today = self.today();
         let js_off = self.js_off;
@@ -51,8 +53,9 @@ impl Session {
         cx.today = today;
         let reason = doc.read_only_reason.clone().unwrap_or_default();
         let signed = doc.is_signed();
+        let enforce_permissions = doc.enforce_edit_permissions;
         let editor = doc.editor.as_mut().ok_or(EditError::ReadOnly(reason))?;
-        if let Some(p) = editor.cos.permissions() {
+        if enforce_permissions && let Some(p) = editor.cos.permissions() {
             check_permission(&edit, &p)?;
         }
         // Rewriting an OCR word (invisible text over a scan) also hides the scanned word: cover it
@@ -74,7 +77,7 @@ impl Session {
         };
         // Nothing to bake: leave undo history and the dirty flag alone.
         if matches!(&edit, Edit::FlattenFillSign) && !pdfcraft_annot::has_visible_fill_sign(&editor.cos) {
-            return Ok(None);
+            return Ok(());
         }
         let mut next = editor.cos.clone();
         if !js_off && uses_scripts(&edit) {
@@ -241,7 +244,7 @@ impl Session {
             doc.xfa_scripts_off = true;
             doc.js_output.errors.push(XFA_SCRIPTS_OFF.into());
         }
-        Ok(cx.prepared)
+        Ok(())
     }
 
     pub fn undo(&mut self, id: DocId) -> Result<Label, EditError> {
@@ -434,7 +437,7 @@ impl Session {
                     | Edit::ReplaceImage { .. }
                     | Edit::PasteContent { .. }
                     | Edit::EditPageImage { .. }
-            ) || matches!(e, Edit::MoveObjects { objects, .. } | Edit::DeleteObjects { objects, .. } if objects.iter().any(|o| o.kind == ObjectKind::Added))
+            ) || matches!(e, Edit::MoveObjects { objects, .. } if objects.iter().any(|o| o.kind == ObjectKind::Added))
         });
         let touches_marks = edit.is_none_or(|e| {
             matches!(e, Edit::AddHeaderFooter { .. } | Edit::AddWatermark { .. } | Edit::AddBackground { .. } | Edit::RemoveMarks { .. })

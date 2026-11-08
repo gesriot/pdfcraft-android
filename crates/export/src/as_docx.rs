@@ -1,5 +1,5 @@
 use super::Zip;
-use super::as_html::{esc, language_tag};
+use super::as_html::esc;
 use super::layout::{Image, Item, Page, Table, body_size, items};
 
 /// A colour's 8-bit sRGB components (NaN and out-of-range values clamp; NaN reads as 0).
@@ -28,26 +28,21 @@ fn run_xml(text: &str, size: f64, bold: bool, italic: bool, color: [f64; 3]) -> 
     }
     let half_points = if size.is_finite() { (size * 2.0).round().clamp(2.0, 3276.0) as i64 } else { 24 };
     rpr.push_str(&format!("<w:sz w:val=\"{half_points}\"/>"));
-    format!("<w:r><w:rPr>{rpr}</w:rPr><w:t xml:space=\"preserve\">{}</w:t></w:r>", esc(text))
+    let content = esc(&text.replace("\r\n", "\n").replace('\r', "\n"))
+        .replace('\n', "</w:t><w:br/><w:t xml:space=\"preserve\">")
+        .replace('\t', "</w:t><w:tab/><w:t xml:space=\"preserve\">");
+    format!("<w:r><w:rPr>{rpr}</w:rPr><w:t xml:space=\"preserve\">{content}</w:t></w:r>")
 }
 
-/// One Word table: when the page's rules draw its grid, single inside borders and single outer
-/// borders on the edges they rule; explicit absent borders otherwise (alignment alone cannot
-/// prove PDF rules), a grid sized from the detected column
-/// edges, `gridSpan` for spanning cells, empty cells for holes.
+/// One Word table: explicit absent borders (alignment alone cannot prove PDF rules), a grid sized
+/// from the detected column edges, `gridSpan` for spanning cells, empty cells for holes.
 pub(crate) fn docx_table(t: &Table) -> String {
     let mut edges = t.cols.clone();
     edges.push(t.rect[2]);
     let widths: Vec<i64> = edges.windows(2).map(|w| ((w[1] - w[0]).max(20.0) * 20.0).round().clamp(60.0, 31680.0) as i64).collect();
     let mut s = String::from("<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblBorders>");
-    let [top, left, bottom, right] = t.ruled.unwrap_or_default();
-    let inside = t.ruled.is_some();
-    for (edge, drawn) in [("top", top), ("left", left), ("bottom", bottom), ("right", right), ("insideH", inside), ("insideV", inside)] {
-        if drawn {
-            s.push_str(&format!("<w:{edge} w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"auto\"/>"));
-        } else {
-            s.push_str(&format!("<w:{edge} w:val=\"nil\"/>"));
-        }
+    for edge in ["top", "left", "bottom", "right", "insideH", "insideV"] {
+        s.push_str(&format!("<w:{edge} w:val=\"nil\"/>"));
     }
     s.push_str("</w:tblBorders></w:tblPr><w:tblGrid>");
     for w in &widths {
@@ -236,49 +231,28 @@ fn word_background(pages: &[Page]) -> Option<String> {
     (same && first != [255, 255, 255]).then(|| format!("{:02X}{:02X}{:02X}", first[0], first[1], first[2]))
 }
 
-/// The `w:lang` that makes `tag` the language of a Word document's text. Word keeps one language
-/// per script: Chinese, Japanese and Korean are its East Asian text, Arabic, Hebrew, Persian and
-/// Urdu its right-to-left text, and any other language its Latin, Greek and Cyrillic text. A
-/// script the tag names (`pa-Arab`, `zh-Latn`) decides over its language.
-fn word_lang(tag: &str) -> String {
-    let mut subtags = tag.split('-');
-    let primary = subtags.next().unwrap_or_default().to_ascii_lowercase();
-    // The script comes straight after the language and any three-letter extended languages; a
-    // singleton before it starts an extension or private use, which names no script.
-    let script = subtags
-        .find(|s| s.len() != 3 || !s.bytes().all(|b| b.is_ascii_alphabetic()))
-        .filter(|s| s.len() == 4 && s.bytes().all(|b| b.is_ascii_alphabetic()))
-        .map(str::to_ascii_lowercase);
-    let attribute = match (script.as_deref(), primary.as_str()) {
-        (Some("arab" | "hebr" | "syrc" | "thaa"), _) => "w:bidi",
-        (Some("hans" | "hant" | "hani" | "jpan" | "kore" | "hang" | "hira" | "kana"), _) => "w:eastAsia",
-        (Some("latn" | "cyrl" | "grek"), _) => "w:val",
-        (_, "zh" | "ja" | "ko") => "w:eastAsia",
-        (_, "ar" | "he" | "fa" | "ur") => "w:bidi",
-        _ => "w:val",
-    };
-    format!("<w:lang {attribute}=\"{}\"/>", esc(tag))
-}
-
 /// A Word document (.docx, Office Open XML). Ordinary pages flow as paragraphs and tables;
 /// pages with rotated text, or text that overlaps artwork, use floating shapes to retain their layout.
 pub fn docx(pages: &[Page], title: &str) -> Vec<u8> {
-    docx_with_language(pages, title, None)
+    docx_inner(pages, title, false)
 }
 
-/// [`docx`] for a document in `language` (a BCP 47 tag such as `bg-BG`, as a PDF's `/Lang` gives
-/// it): the default language of its text, so Word checks the spelling in that language rather
-/// than in its own. A language that is not a well formed tag is left out.
-pub fn docx_with_language(pages: &[Page], title: &str, language: Option<&str>) -> Vec<u8> {
+/// Portable paragraph, table and inline-picture DOCX, without legacy floating text boxes.
+/// The caller handles source rotation and overlays before reflow.
+pub fn docx_reflow(pages: &[Page], title: &str) -> Vec<u8> {
+    docx_inner(pages, title, true)
+}
+
+fn docx_inner(pages: &[Page], title: &str, reflow: bool) -> Vec<u8> {
     let mut body = String::new();
     let mut media: Vec<(String, &Image)> = Vec::new();
     // Word needs a paragraph between adjacent tables and after the last one in the body.
     let mut after_table = false;
     let mut shape_id = 0usize;
     for (page_index, page) in pages.iter().enumerate() {
-        let (pw, _) = word_page_size(page);
+        let (pw, ph) = word_page_size(page);
         let text_w = (pw - 2 * (pw / 8).min(1440)) as f64 / 20.0;
-        if positioned(page) {
+        if !reflow && positioned(page) {
             body.push_str(&positioned_page(page, &mut media, &mut shape_id));
             after_table = false;
         } else {
@@ -309,7 +283,9 @@ pub fn docx_with_language(pages: &[Page], title: &str, language: Option<&str>) -
                             let name = format!("image{n}.{}", im.ext);
                             // Size on the page, at most the text width.
                             let (w, h) = ((im.rect[2] - im.rect[0]).max(1.0), (im.rect[3] - im.rect[1]).max(1.0));
-                            let k = (text_w / w).min(1.0);
+                            // Fit tall scans inside the section too; leave room for the anchor paragraph.
+                            let text_h = (ph - 2 * (ph / 8).min(1440)) as f64 / 20.0 - 24.0;
+                            let k = (text_w / w).min(text_h.max(1.0) / h).min(1.0);
                             let (cx, cy) = (emu(w * k), emu(h * k));
                             body.push_str(&format!("<w:p><w:r><w:drawing><wp:inline><wp:extent cx=\"{cx}\" cy=\"{cy}\"/>"));
                             body.push_str(&picture_xml(n, &name, (cx, cy), None));
@@ -377,16 +353,11 @@ xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawin
         doc_rels.push_str("<Relationship Id=\"rIdSettings\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings\" Target=\"settings.xml\"/>");
     }
     doc_rels.push_str("</Relationships>");
-    let defaults = language_tag(language)
-        .map(|tag| format!("<w:docDefaults><w:rPrDefault><w:rPr>{}</w:rPr></w:rPrDefault></w:docDefaults>", word_lang(tag)))
-        .unwrap_or_default();
-    let styles = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">{defaults}\
+    let styles = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">\
 <w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/><w:pPr><w:spacing w:after=\"120\"/></w:pPr></w:style>\
 <w:style w:type=\"paragraph\" w:styleId=\"Heading1\"><w:name w:val=\"heading 1\"/><w:basedOn w:val=\"Normal\"/><w:next w:val=\"Normal\"/><w:pPr><w:keepNext/><w:spacing w:before=\"240\"/><w:outlineLvl w:val=\"0\"/></w:pPr><w:rPr><w:b/></w:rPr></w:style>\
 <w:style w:type=\"paragraph\" w:styleId=\"Heading2\"><w:name w:val=\"heading 2\"/><w:basedOn w:val=\"Normal\"/><w:next w:val=\"Normal\"/><w:pPr><w:keepNext/><w:spacing w:before=\"200\"/><w:outlineLvl w:val=\"1\"/></w:pPr><w:rPr><w:b/></w:rPr></w:style>\
-</w:styles>"
-    );
+</w:styles>";
     let core = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title>{}</dc:title></cp:coreProperties>",
         esc(title)

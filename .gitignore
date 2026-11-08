@@ -10,3 +10,33 @@ plan/
 # A craft-fonts checkout used as the optional CRAFT_FONTS_DIR build input (CI and releases put it here).
 /craft-fonts
 .claude/
+/android/.gradle/
+/android/.build/
+/android/local.properties
+/android/signing.properties
+/android/*.jks
+/android/*.keystore
+/android/app/build/
+/android/build/
+/rustc-ice-*.txt
+
+# Local Android tooling and generated native bindings stay outside source control.
+/android/.kotlin/
+/android/.cxx/
+/android/tests/__pycache__/
+/android/native/
+.idea/
+*.iml
+*.apk
+*.aab
+
+# Signing material is private; committed examples contain placeholders only.
+*.jks
+*.keystore
+signing.properties
+keystore.properties
+key.properties
+local.properties
+.env
+.env.*
+!.env.example
